@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Group Home Scheduler – Prototype (sample data)</title>
+<style>
+*{box-sizing:border-box}body{font:14px system-ui,sans-serif;margin:0;color:#1d2330;background:#f5f6f8}
+header{background:#1f3a5f;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header h1{font-size:17px;margin:0;flex:1}.tag{background:#f0b429;color:#000;border-radius:4px;padding:2px 6px;font-size:12px}
+nav{display:flex;flex-wrap:wrap;gap:4px;padding:8px 16px;background:#e3e7ee}
+nav button{border:0;background:none;padding:6px 10px;border-radius:6px;cursor:pointer}nav button.on{background:#fff;font-weight:600}
+main{padding:12px 16px}button{cursor:pointer}.btn{padding:5px 10px;border:1px solid #aab;border-radius:6px;background:#fff}
+.btn.p{background:#1f3a5f;color:#fff;border-color:#1f3a5f}table{border-collapse:collapse;background:#fff}
+th,td{border:1px solid #d5d9e0;padding:5px;vertical-align:top;text-align:left}th{background:#eef1f5}
+input,select{padding:3px;font:inherit}input[type=number]{width:60px}
+.layout{display:flex;gap:12px;align-items:flex-start}.side{width:230px;flex:none;background:#fff;border:1px solid #d5d9e0;border-radius:8px;padding:8px;max-height:80vh;overflow:auto}
+.board{overflow:auto;flex:1}.shift{border-radius:6px;padding:4px;margin:3px 0;min-width:150px;border:2px solid transparent;font-size:12px}
+.g{background:#dff3e3}.a{background:#fff1c9}.r{background:#fbd9d9}.shift.over{border-color:#1f3a5f}.shift.bad{border-color:#c0392b}.shift.warn{border-color:#e08e0b}
+.chip{display:inline-block;background:#fff;border:1px solid #99a;border-radius:10px;padding:1px 6px;margin:2px 2px 0 0;cursor:grab;font-size:12px}
+.chip.cf{border-color:#c0392b;color:#c0392b}.chip.cover{border-style:dashed}
+.chip.soft{background:#e6eefc;border-color:#1f3a5f;font-weight:600}
+#toast{position:fixed;top:60px;right:16px;background:#fff;border:1px solid #1f3a5f;border-radius:8px;padding:10px 14px;max-width:380px;display:none;box-shadow:0 2px 8px #0003;z-index:5}
+.badge{font-size:11px;border-radius:8px;padding:0 5px;margin-left:3px}.ot{background:#c0392b;color:#fff}.un{background:#e08e0b;color:#fff}
+#hint{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);background:#1d2330;color:#fff;padding:6px 12px;border-radius:6px;display:none;max-width:90%}
+.modal{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center}.modal>div{background:#fff;border-radius:10px;padding:16px;width:440px;max-height:85vh;overflow:auto}
+.muted{color:#667;font-size:12px}h3{margin:10px 0 4px}.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+
+#sheet{position:fixed;inset:0;background:#0006;display:none;z-index:20;align-items:flex-end;justify-content:center}
+#sheet>div{background:#fff;width:100%;max-width:520px;max-height:80vh;overflow:auto;border-radius:14px 14px 0 0;padding:12px 14px calc(14px + env(safe-area-inset-bottom))}
+#sheet .opt{display:block;width:100%;text-align:left;padding:10px;margin:4px 0;border:1px solid #d5d9e0;border-radius:8px;background:#fff;font:inherit;color:inherit}
+#sheet .opt.w{border-color:#e08e0b;background:#fff8e6}#sheet .opt.b{opacity:.55;background:#f3f3f3}
+.shift{cursor:pointer}
+@media (max-width:760px){header{padding:8px 10px}header h1{font-size:15px;flex-basis:100%}
+nav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:6px 8px}nav button{white-space:nowrap;padding:8px 10px}
+main{padding:8px}.layout{flex-direction:column}.side{width:100%;max-height:30vh}.board{width:100%;-webkit-overflow-scrolling:touch}
+.chip{font-size:13px;padding:3px 8px}.shift{min-width:140px}.modal>div{width:94vw}#toast{left:8px;right:8px;max-width:none}
+main table{display:block;overflow-x:auto}input,select,.btn{font-size:16px}}
+</style></head><body>
+<header><h1>Group Home Scheduler <span class="tag">PROTOTYPE · SAMPLE DATA</span></h1>
+<label style="font-size:13px">Viewing as <select id="viewAs"></select></label> <button class="btn" id="resetBtn">Reset sample data</button></header>
+<nav id="tabs"></nav><main id="main"></main><div id="hint"></div><div id="toast"></div><div id="sheet"><div id="sheetIn"></div></div>
+<script>
+'use strict';
+const KEY='ghs-proto-v4';const TABS=['Weekly board','Homes','Shift templates','Staff','Days off','Kid counts','Coverage gaps','Admin users'];
+let tab='Weekly board',S,weekStart;
+const pad=n=>String(n).padStart(2,'0');
+const ds=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const monday=d=>{const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const k=(x.getDay()+6)%7;return addDays(x,-k)};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+function sample(){
+ const w=monday(new Date()),D=n=>ds(addDays(w,n));
+ const homes=[{id:'h1',name:'Sample Home A (DCS)',type:'DCS',census:8,ratio:4,overnightMode:'separate',overnightRatio:8,minStaff:1},
+ {id:'h2',name:'Sample Home B (DCS)',type:'DCS',census:6,ratio:3,overnightMode:'same',overnightRatio:6,minStaff:1},
+ {id:'h3',name:'Sample Home C (Tribal)',type:'Tribal',census:5,ratio:4,overnightMode:'separate',overnightRatio:6,minStaff:1},
+ {id:'h4',name:'Sample Home D (Tribal)',type:'Tribal',census:7,ratio:4,overnightMode:'separate',overnightRatio:8,minStaff:1}];
+ const templates=[];homes.forEach(h=>{[['School day','07:00','15:00',['school']],['Weekend day','07:00','15:00',['weekend']],['Holiday day','07:00','15:00',['holiday']],['Evening','15:00','23:00',['school','weekend','holiday']],['Sleepover','23:00','07:00',['school','weekend','holiday']]].forEach(([n,s,e,dt])=>templates.push({id:uid(),homeId:h.id,name:n,start:s,end:e,dayTypes:dt,minOverride:0,overnight:n==='Sleepover'}))});
+ const names=['Ana R.','Ben T.','Carla M.','Dev P.','Eli S.','Fay W.','Gus L.','Hana K.','Ivan D.','Jo B.','Kai N.','Lena F.','Moe A.','Nia C.'];
+ const usual=[['h1'],['h1','h2'],['h1'],['h2'],['h2','h1'],['h2'],['h3'],['h3','h4'],['h3'],['h4'],['h4','h3'],['h4'],['h1','h3'],['h2','h4']];
+ const elig=['both','both','both','both','both','both','tribal','tribal','both','tribal','tribal','both','both','both'];
+ const staff=names.map((n,i)=>({id:'s'+i,hasDefault:[0,6,13].includes(i),name:n,elig:elig[i],usual:usual[i],emp:i%4===3?'PT':'FT',target:36,active:true,phone:'555-01'+pad(i)}));
+ staff.push({id:'sa2',name:'Rae (admin)',adminId:'a2',hasDefault:false,elig:'both',usual:['h1'],emp:'FT',target:36,active:true,phone:''},{id:'sa3',name:'Sam (admin)',adminId:'a3',hasDefault:false,elig:'tribal',usual:['h3'],emp:'PT',target:0,active:true,phone:''});
+ return {homes,templates,staff,holidays:[],
+  daysOff:[{id:uid(),staffId:'s0',allDay:true,start:D(2)+'T00:00',end:D(3)+'T00:00',reason:'Personal day'},{id:uid(),staffId:'s6',allDay:false,start:D(1)+'T14:00',end:D(1)+'T19:00',reason:'Appointment (partial)'}],
+  kidEvents:[{id:uid(),homeId:'h1',type:'Weekend visit',start:D(5)+'T09:00',end:D(6)+'T18:00',delta:-3,notes:'3 kids home visit'},
+   {id:uid(),homeId:'h3',type:'School trip',start:D(3)+'T07:00',end:D(3)+'T16:00',delta:-2,notes:'Field trip'},
+   {id:uid(),homeId:'h2',type:'Visitor/extra child in',start:D(4)+'T15:00',end:D(5)+'T12:00',delta:1,notes:'Respite placement'},
+   {id:uid(),homeId:'h4',type:'Sleepover away',start:D(4)+'T18:00',end:D(5)+'T10:00',delta:-1,notes:''}],
+  admins:[{id:'a1',name:'Pat (all homes)',email:'pat@example.org',role:'all_homes',homes:[],schedulable:false,staffId:null},{id:'a2',name:'Rae (Homes A+B)',email:'rae@example.org',role:'home_scoped',homes:['h1','h2'],schedulable:true,staffId:'sa2'},{id:'a3',name:'Sam (Home C)',email:'sam@example.org',role:'home_scoped',homes:['h3'],schedulable:true,staffId:'sa3'}],viewAs:'a1',
+  assign:{},meta:{},seeded:{},removedSeeds:{},
+  defaults:[0,1,2,3,4].map(w=>({id:uid(),staffId:'s0',homeId:'h1',tpl:'School day',weekday:w})).concat([0,1,2,3,4].map(w=>({id:uid(),staffId:'s6',homeId:'h3',tpl:'Evening',weekday:w})),[4,5,6].map(w=>({id:uid(),staffId:'s13',homeId:'h2',tpl:'Evening',weekday:w})))};
+}
+function load(){try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){S=null}if(!S||!S.homes){S=sample();save()}S.meta=S.meta||{};S.seeded=S.seeded||{};S.removedSeeds=S.removedSeeds||{};S.defaults=S.defaults||[];if(!S.admins){const x=sample();S.admins=x.admins;S.viewAs='a1'}}
+const adminOf=st=>st&&st.adminId?S.admins.find(a=>a.id===st.adminId):null,vis=st=>{const a=adminOf(st);return!st.adminId||!!(a&&a.schedulable)};
+const me=()=>S.admins.find(a=>a.id===S.viewAs)||S.admins[0],isAll=()=>me().role==='all_homes',inScope=h=>isAll()||me().homes.includes(h),myHomes=()=>S.homes.filter(h=>inScope(h.id));
+function save(){localStorage.setItem(KEY,JSON.stringify(S))}
+// ---- domain
+const home=id=>S.homes.find(h=>h.id===id),staffBy=id=>S.staff.find(s=>s.id===id),tplBy=id=>S.templates.find(t=>t.id===id);
+function dayType(date){if(S.holidays.includes(date))return 'holiday';const g=new Date(date+'T12:00').getDay();return g===0||g===6?'weekend':'school'}
+function win(date,t){const s=new Date(date+'T'+t.start);let e=new Date(date+'T'+t.end);if(e<=s)e=addDays(e,1);return[s,e]}
+const ov=(a1,a2,b1,b2)=>a1<b2&&b1<a2;
+function shiftsFor(date,homeId){return S.templates.filter(t=>t.homeId===homeId&&t.dayTypes.includes(dayType(date))).sort((a,b)=>a.start<b.start?-1:1).map(t=>mkShift(date,t))}
+function mkShift(date,t){const[s,e]=win(date,t),h=home(t.homeId);let kids=h.census;S.kidEvents.forEach(k=>{if(k.homeId===h.id&&ov(s,e,new Date(k.start),new Date(k.end)))kids+=Number(k.delta)});kids=Math.max(0,kids);
+ const ratio=(t.overnight&&h.overnightMode==='separate')?h.overnightRatio:h.ratio;const req=Math.max(h.minStaff,t.minOverride||0,kids?Math.ceil(kids/ratio):0);
+ const key=date+'|'+t.id;return{key,date,t,h,s,e,kids,req,staff:S.assign[key]||[]}}
+function shiftByKey(key){const[d,id]=key.split('|');const t=tplBy(id);return t?mkShift(d,t):null}
+const hrs=sh=>(sh.e-sh.s)/36e5;
+function allAssigned(){const out=[];for(const k in S.assign){const sh=shiftByKey(k);if(sh)sh.staff.forEach(id=>out.push({sh,id}))}return out}
+function otherHours(sid){let h=0;const w0=weekStart,w1=addDays(weekStart,7);allAssigned().forEach(({sh,id})=>{if(id===sid&&!inScope(sh.h.id)&&sh.s>=w0&&sh.s<w1)h+=hrs(sh)});return h}
+function weekHours(sid,excludeKey){let h=0;const w0=weekStart,w1=addDays(weekStart,7);allAssigned().forEach(({sh,id})=>{if(id===sid&&sh.key!==excludeKey&&sh.s>=w0&&sh.s<w1)h+=hrs(sh)});return h}
+function issues(sid,sh,ignoreKey){const st=staffBy(sid),r={block:[],warn:[]};if(!inScope(sh.h.id))r.block.push('Out of your home scope');{const ad=adminOf(st);if(ad){if(!ad.schedulable)r.block.push('Admin is not schedulable');else if(ad.role!=='all_homes'&&!ad.homes.includes(sh.h.id))r.block.push("Outside this admin's homes")}}
+ if(sh.h.type==='DCS'&&st.elig!=='both')r.block.push('Tribal-only staff cannot work a DCS home');
+ if(!st.active)r.block.push('Inactive');
+ S.daysOff.filter(o=>o.staffId===sid&&ov(sh.s,sh.e,new Date(o.start),new Date(o.end))).forEach(o=>r.warn.push((o.allDay?'Full':'Partial')+' day off: '+o.reason));
+ allAssigned().forEach(({sh:o,id})=>{if(id===sid&&o.key!==sh.key&&o.key!==ignoreKey&&ov(sh.s,sh.e,o.s,o.e))r.warn.push('Double-booked: '+o.h.name+' '+o.t.name+' '+o.date)});
+ const h=weekHours(sid,ignoreKey)+(sh.staff.includes(sid)?0:hrs(sh));if(h>40)r.warn.push('Overtime: '+h+' hrs this week');return r}
+function color(sh){const n=sh.staff.length;return n>=sh.req?'g':n===sh.req-1?'a':'r'}
+function conflictsIn(sh){return sh.staff.filter(id=>{const i=issues(id,sh,sh.key);return i.block.length||i.warn.some(w=>!w.startsWith('Overtime'))})}
+const mk=(k,s)=>k+'#'+s,isSoft=(k,s)=>!!(S.meta[mk(k,s)]&&S.meta[mk(k,s)].soft);
+function assign(key,sid,from,source){if(from){unassign(from,sid)}const a=S.assign[key]=S.assign[key]||[];if(!a.includes(sid)){a.push(sid);S.meta[mk(key,sid)]={source:source||'manual',soft:source==='default_seed'}}save()}
+function unassign(key,sid){if(isSoft(key,sid))S.removedSeeds[mk(key,sid)]=1;delete S.meta[mk(key,sid)];S.assign[key]=(S.assign[key]||[]).filter(x=>x!==sid);save()}
+function seedWeek(){const wk=ds(weekStart),done=[],skipped=[];S.defaults.forEach(d=>{const st=staffBy(d.staffId);if(!st||!st.hasDefault||!st.active||!inScope(d.homeId))return;const date=ds(addDays(weekStart,d.weekday));
+ if(d.from&&date<d.from||d.to&&date>d.to)return;const t=S.templates.find(t=>t.homeId===d.homeId&&t.name===d.tpl&&t.dayTypes.includes(dayType(date)));const lab=st.name+' '+date+' '+d.tpl;
+ if(!t){skipped.push(lab+': no such shift that day');return}const sh=mkShift(date,t);if(sh.staff.includes(st.id))return;if(S.removedSeeds[mk(sh.key,st.id)])return;
+ const i=issues(st.id,sh);if(i.block.length||i.warn.length){skipped.push(lab+': '+i.block.concat(i.warn).join('; '));return}assign(sh.key,st.id,null,'default_seed');done.push(lab)});
+ S.seeded[wk]=1;save();toast('<b>Seeded defaults for week of '+wk+'</b><br>'+done.length+' soft-locked shifts placed.'+(skipped.length?'<br>Skipped:<br>• '+skipped.map(esc).join('<br>• '):''))}
+function toast(h){const t=document.getElementById('toast');t.innerHTML=h+'<div><button class="btn" onclick="this.parentNode.parentNode.style.display=\'none\'">OK</button></div>';t.style.display='block'}
+function tryDrop(key,sid,from){const sh=shiftByKey(key);if(sh.staff.includes(sid))return;if(from&&isSoft(from,sid)&&!confirm('Move this default (soft-locked) shift?'))return;const i=issues(sid,sh,from);
+ if(i.block.length){alert('Blocked: '+i.block.join('; '));return}
+ if(i.warn.length&&!confirm('Warnings for '+staffBy(sid).name+':\n- '+i.warn.join('\n- ')+'\n\nAssign anyway (override)?'))return;
+ assign(key,sid,from);render()}
+// ---- UI
+const M=()=>document.getElementById('main');
+function render(){if(tab==='Admin users'&&!isAll())tab='Weekly board';document.getElementById('viewAs').innerHTML=S.admins.map(a=>`<option value="${a.id}" ${a.id===S.viewAs?'selected':''}>${esc(a.name)}</option>`).join('');document.getElementById('tabs').innerHTML=TABS.filter(t=>t!=='Admin users'||isAll()).map(t=>`<button class="${t===tab?'on':''}" data-tab="${t}">${t}</button>`).join('');({'Weekly board':board,'Homes':homesV,'Shift templates':tplV,'Staff':staffV,'Days off':offV,'Kid counts':kidV,'Coverage gaps':gapV,'Admin users':adminV})[tab]();if(!isAll()&&(tab==='Staff'||tab==='Homes')){M().querySelectorAll('input,select,button').forEach(x=>x.disabled=true);M().insertAdjacentHTML('afterbegin','<p class="muted">Read-only: only all-homes admins can edit '+tab.toLowerCase()+'.</p>')}}
+function weekDates(){return[...Array(7)].map((_,i)=>ds(addDays(weekStart,i)))}
+const fmtT=t=>{let[h,m]=t.split(':').map(Number);const ap=h<12?'a':'p';h=h%12||12;return h+(m?':'+pad(m):'')+ap};
+function board(){if(!S.seeded[ds(weekStart)]){seedWeek()}const dates=weekDates();
+ const side=S.staff.filter(s=>s.active&&vis(s)).map(s=>{const h=weekHours(s.id);const ot=h>40,un=s.emp==='FT'&&h<s.target;
+  return `<div class="chip" draggable="true" data-sid="${s.id}" title="${esc(s.elig==='both'?'DCS + Tribal':'Tribal only')}">${esc(s.name)}${s.adminId?'<span class="badge" style="background:#1f3a5f;color:#fff">Admin</span>':''} <span class="muted">${h}h</span>${ot?'<span class="badge ot">OT</span>':''}${un?'<span class="badge un">under</span>':''}</div>`}).join('');
+ let html=`<div class="row"><button class="btn" data-wk="-1">◀ Prev</button><b>Week of ${dates[0]}</b><button class="btn" data-wk="1">Next ▶</button><button class="btn" id="seedBtn">Seed defaults</button><button class="btn p" id="autoBtn">Auto-fill week (greedy)</button><span class="muted">Drag staff onto shifts; drag a chip to move it, or onto the sidebar to unassign. Tap or click a shift to assign (works on phones).</span></div>
+ <div class="layout"><div class="side" id="sidebar" data-unassign="1"><b>Staff</b> <span class="muted">(drop here to unassign)</span><br>${side}
+ <h3>Hours this week</h3><table><tr><th>Staff</th><th>Sched</th><th>Target</th></tr>${S.staff.filter(vis).map(s=>{const h=weekHours(s.id);const fl=h>40?'<span class="badge ot">&gt;40</span>':(s.emp==='FT'&&h<s.target?'<span class="badge un">under</span>':'');return`<tr><td>${esc(s.name)} <span class="muted">${s.emp}</span></td><td>${h}${fl}${isAll()?'':(()=>{const o=otherHours(s.id);return o?` <span class="muted">(${o} other homes, read-only)</span>`:''})()}</td><td>${s.emp==='FT'?s.target:'–'}/40</td></tr>`}).join('')}</table></div>
+ <div class="board"><table><tr><th>Home</th>${dates.map(d=>`<th>${new Date(d+'T12:00').toLocaleDateString(undefined,{weekday:'short',month:'numeric',day:'numeric'})}<div class="muted">${dayType(d)}</div></th>`).join('')}</tr>`;
+ myHomes().forEach(h=>{html+=`<tr><th>${esc(h.name)}<div class="muted">${h.type} · census ${h.census}</div></th>`;dates.forEach(d=>{html+='<td>'+shiftsFor(d,h.id).map(sh=>{const cf=conflictsIn(sh);
+  return `<div class="shift ${color(sh)}" data-key="${sh.key}"><b>${esc(sh.t.name)}</b> ${fmtT(sh.t.start)}–${fmtT(sh.t.end)}<br>${sh.kids} kids · ${sh.staff.length}/${sh.req} staff${cf.length?' <b style="color:#c0392b">⚠ conflict</b>':''}<br>${sh.staff.map(id=>{const s=staffBy(id);const cov=!s.usual.includes(h.id);const so=isSoft(sh.key,id);return`<span class="chip ${cf.includes(id)?'cf':''} ${cov?'cover':''} ${so?'soft':''}" draggable="true" data-sid="${id}" data-from="${sh.key}" title="${so?'Soft-locked default (drag or remove freely)':''}">${so?'📌 ':''}${esc(s.name)}${cov?' (cover)':''}</span>`}).join('')}</div>`}).join('')+'</td>'});html+='</tr>'});
+ M().innerHTML=html+'</table><p class="muted">Green = covered, amber = 1 short, red = 2+ short. Dashed chip = covering outside usual home. 📌 = soft-locked default schedule (seeded; can be moved or removed).</p></div></div>'}
+function picker(key){return openPicker(key);const sh=shiftByKey(key);const avail=S.staff.filter(s=>s.active&&vis(s)&&!sh.staff.includes(s.id)).map(s=>({s,i:issues(s.id,sh)})).filter(x=>!x.i.block.length&&!x.i.warn.some(w=>!w.startsWith('Overtime')));
+ const usual=avail.filter(x=>x.s.usual.includes(sh.h.id)),cover=avail.filter(x=>!x.s.usual.includes(sh.h.id));
+ const li=(x,lab)=>`<div class="row"><button class="btn" data-pick="${x.s.id}">Assign</button>${esc(x.s.name)} ${lab?'<span class="muted">cover</span>':''} <span class="muted">${weekHours(x.s.id)}h</span>${x.i.warn.length?'<span class="badge ot">OT</span>':''}</div>`;
+ const m=document.createElement('div');m.className='modal';m.innerHTML=`<div><h3>${esc(sh.h.name)} – ${esc(sh.t.name)} ${sh.date}</h3><div class="muted">${fmtT(sh.t.start)}–${fmtT(sh.t.end)} · ${sh.kids} expected kids · needs ${sh.req}</div>
+ <h3>Assigned</h3>${sh.staff.map(id=>`<div class="row"><button class="btn" data-un="${id}">Remove</button>${isSoft(key,id)?'📌 ':''}${esc(staffBy(id).name)}${isSoft(key,id)?' <span class="muted">default</span>':''}</div>`).join('')||'<div class="muted">Nobody yet</div>'}
+ <h3>Usual-home staff</h3>${usual.map(x=>li(x)).join('')||'<div class="muted">None available</div>'}<h3>Cover (other eligible)</h3>${cover.map(x=>li(x,1)).join('')||'<div class="muted">None available</div>'}
+ <p class="muted">Hidden: ineligible, on day off, or double-booked.</p><button class="btn p" data-close="1">Close</button></div>`;
+ m.onclick=e=>{const b=e.target.closest('button');if(e.target===m||b&&b.dataset.close){m.remove();render();return}if(!b)return;if(b.dataset.pick){const x=avail.find(a=>a.s.id===b.dataset.pick);if(x.i.warn.length&&!confirm(x.i.warn.join('\n')+'\nAssign anyway?'))return;assign(key,b.dataset.pick,null,'manual');m.remove();render();picker(key)}if(b.dataset.un){if(isSoft(key,b.dataset.un)&&!confirm('Remove this default (soft-locked) shift?'))return;unassign(key,b.dataset.un);m.remove();render();picker(key)}};document.body.appendChild(m)}
+function autofill(){weekDates().forEach(d=>myHomes().forEach(h=>shiftsFor(d,h.id).forEach(sh=>{while((S.assign[sh.key]||[]).length<sh.req){const cur=shiftByKey(sh.key);const c=S.staff.filter(s=>s.active&&vis(s)&&!cur.staff.includes(s.id)).filter(s=>{const i=issues(s.id,cur);return!i.block.length&&!i.warn.length}).sort((a,b)=>(b.usual.includes(h.id)-a.usual.includes(h.id))||(weekHours(a.id)-weekHours(b.id)))[0];if(!c)break;assign(sh.key,c.id,null,'auto_fill')}})));render()}
+function homesV(){M().innerHTML=`<table><tr><th>Home</th><th>Type</th><th>Base census</th><th>Kids per staff</th><th>Overnight mode</th><th>Overnight kids/staff</th><th>Min staff</th></tr>${myHomes().map(h=>`<tr><td><input data-h="${h.id}" data-f="name" value="${esc(h.name)}"></td><td><select data-h="${h.id}" data-f="type">${['DCS','Tribal'].map(o=>`<option ${o===h.type?'selected':''}>${o}</option>`)}</select></td><td><input type="number" data-h="${h.id}" data-f="census" value="${h.census}"></td><td><input type="number" data-h="${h.id}" data-f="ratio" value="${h.ratio}"></td><td><select data-h="${h.id}" data-f="overnightMode"><option value="same" ${h.overnightMode==='same'?'selected':''}>Same as awake</option><option value="separate" ${h.overnightMode==='separate'?'selected':''}>Separate ratio</option></select></td><td><input type="number" data-h="${h.id}" data-f="overnightRatio" value="${h.overnightRatio}"></td><td><input type="number" data-h="${h.id}" data-f="minStaff" value="${h.minStaff}"></td></tr>`).join('')}</table><p class="muted">Changes save automatically. Ratios are sample numbers.</p>`}
+function tplV(){M().innerHTML=myHomes().map(h=>`<h3>${esc(h.name)}</h3><table><tr><th>Template</th><th>Day types</th><th>Start</th><th>End</th><th>Min staff override</th></tr>${S.templates.filter(t=>t.homeId===h.id).map(t=>`<tr><td>${esc(t.name)}</td><td>${t.dayTypes.join(', ')}</td><td><input type="time" data-t="${t.id}" data-f="start" value="${t.start}"></td><td><input type="time" data-t="${t.id}" data-f="end" value="${t.end}"></td><td><input type="number" data-t="${t.id}" data-f="minOverride" value="${t.minOverride}"></td></tr>`).join('')}</table>`).join('')+`<h3>Holidays</h3><div class="row">${S.holidays.map(d=>`<span class="chip">${d} <a href="#" data-delhol="${d}">✕</a></span>`).join('')}<input type="date" id="holIn"><button class="btn" id="holAdd">Add holiday</button></div>`}
+function staffV(){M().innerHTML=`<table><tr><th>Name</th><th>Eligibility</th><th>Usual homes (1–2)</th><th>Type</th><th>Target hrs</th><th>Active</th><th>Hours this week</th><th>Default schedule</th></tr>${S.staff.filter(vis).map(s=>`<tr><td><input data-s="${s.id}" data-f="name" value="${esc(s.name)}"></td><td><select data-s="${s.id}" data-f="elig"><option value="both" ${s.elig==='both'?'selected':''}>DCS + Tribal</option><option value="tribal" ${s.elig==='tribal'?'selected':''}>Tribal only</option></select></td><td>${S.homes.map(h=>`<label><input type="checkbox" data-uh="${s.id}" value="${h.id}" ${s.usual.includes(h.id)?'checked':''}>${esc(h.name.replace('Sample ',''))}</label><br>`).join('')}</td><td><select data-s="${s.id}" data-f="emp"><option value="FT" ${s.emp==='FT'?'selected':''}>Full-time</option><option value="PT" ${s.emp==='PT'?'selected':''}>Part-time</option></select></td><td><input type="number" data-s="${s.id}" data-f="target" value="${s.target}"></td><td><input type="checkbox" data-sact="${s.id}" ${s.active?'checked':''}></td><td>${weekHours(s.id)}</td><td><label><input type="checkbox" data-hasdef="${s.id}" ${s.hasDefault?'checked':''}> Has default</label>${s.hasDefault?S.defaults.filter(d=>d.staffId===s.id).map(d=>`<div class="row"><select data-def="${d.id}" data-f="weekday">${WD.map((w,i)=>`<option value="${i}" ${i==d.weekday?'selected':''}>${w}</option>`).join('')}</select><select data-def="${d.id}" data-f="homeId">${S.homes.map(h=>`<option value="${h.id}" ${h.id===d.homeId?'selected':''}>${esc(h.name.replace('Sample ',''))}</option>`).join('')}</select><select data-def="${d.id}" data-f="tpl">${TN.map(n=>`<option ${n===d.tpl?'selected':''}>${n}</option>`).join('')}</select><button class="btn" data-deldef="${d.id}">✕</button></div>`).join('')+`<button class="btn" data-adddef="${s.id}">+ Add day</button>`:''}</td></tr>`).join('')}</table><div class="row"><button class="btn" id="addStaff">Add staff</button></div><p class="muted">Default schedules are seeded onto each new week as soft-locked (📌) shifts. Use “Seed defaults” on the board to re-seed; it only fills missing default slots and never re-adds ones you removed.</p>`}
+function adminV(){M().innerHTML=`<table><tr><th>Name</th><th>Email</th><th>Role</th><th>Homes (home-scoped)</th><th>Schedulable</th></tr>${S.admins.map(a=>`<tr><td><input data-adm="${a.id}" data-f="name" value="${esc(a.name)}"></td><td><input data-adm="${a.id}" data-f="email" value="${esc(a.email)}"></td><td><select data-adm="${a.id}" data-f="role"><option value="all_homes" ${a.role==='all_homes'?'selected':''}>All homes</option><option value="home_scoped" ${a.role==='home_scoped'?'selected':''}>Home-scoped</option></select></td><td>${a.role==='home_scoped'?S.homes.map(h=>`<label><input type="checkbox" data-adm="${a.id}" data-f="home" value="${h.id}" ${a.homes.includes(h.id)?'checked':''}>${esc(h.name.replace('Sample ',''))}</label> `).join(''):'All'}</td><td><label><input type="checkbox" data-admsched="${a.id}" ${a.schedulable?'checked':''}> Schedulable</label>${a.schedulable&&a.staffId?' <span class="muted">linked staff record; edit on Staff tab</span>':''}</td></tr>`).join('')}</table><p class="muted">Sample admins. Home-scoped admins see and schedule only their homes; staff hours still count every home. Schedulable admins appear as staff (Admin badge) and can only be placed in homes within their admin scope.</p>`}
+const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],TN=['School day','Weekend day','Holiday day','Evening','Sleepover'];
+function offV(){M().innerHTML=`<div class="row"><select id="oS">${S.staff.filter(vis).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`)}</select><label><input type="checkbox" id="oAll" checked> All day</label>From <input type="datetime-local" id="oA"> to <input type="datetime-local" id="oB"><input id="oR" placeholder="Reason"><button class="btn p" id="oAdd">Add day off</button></div><p class="muted">All day: the times are ignored and whole days from the start date through the end date are blocked.</p>
+ <table><tr><th>Staff</th><th>Kind</th><th>Start</th><th>End</th><th>Reason</th><th>Conflicts</th><th></th></tr>${S.daysOff.map(o=>{const c=allAssigned().filter(({sh,id})=>id===o.staffId&&ov(sh.s,sh.e,new Date(o.start),new Date(o.end))).map(({sh})=>sh.h.name+' '+sh.t.name+' '+sh.date);return`<tr><td>${esc(staffBy(o.staffId)?.name)}</td><td>${o.allDay?'Full day':'Partial'}</td><td>${o.start.replace('T',' ')}</td><td>${o.end.replace('T',' ')}</td><td>${esc(o.reason)}</td><td style="color:#c0392b">${esc(c.join('; '))}</td><td><button class="btn" data-deloff="${o.id}">Remove</button></td></tr>`}).join('')}</table>`}
+const KT=['Weekend visit','Summer camp','Sleepover away','School trip','Visitor/extra child in','Other'];
+function kidV(){M().innerHTML=`<div class="row"><select id="kH">${myHomes().map(h=>`<option value="${h.id}">${esc(h.name)}</option>`)}</select><select id="kT">${KT.map(t=>`<option>${t}</option>`)}</select>From <input type="datetime-local" id="kA"> to <input type="datetime-local" id="kB"> Change in kids <input type="number" id="kD" value="-1"><input id="kN" placeholder="Notes"><button class="btn p" id="kAdd">Add event</button></div><p class="muted">Use a negative number for kids away and a positive one for extra kids in. Expected kids for a shift = base census + every event that overlaps it.</p>
+ <table><tr><th>Home</th><th>Type</th><th>Start</th><th>End</th><th>Change</th><th>Notes</th><th></th></tr>${S.kidEvents.filter(k=>inScope(k.homeId)).map(k=>`<tr><td>${esc(home(k.homeId)?.name)}</td><td>${esc(k.type)}</td><td>${k.start.replace('T',' ')}</td><td>${k.end.replace('T',' ')}</td><td>${k.delta>0?'+':''}${k.delta}</td><td>${esc(k.notes)}</td><td><button class="btn" data-delkid="${k.id}">Remove</button></td></tr>`).join('')}</table>`}
+function gapV(){const rows=[];weekDates().forEach(d=>myHomes().forEach(h=>shiftsFor(d,h.id).forEach(sh=>{const cf=conflictsIn(sh);if(sh.staff.length<sh.req||cf.length)rows.push({sh,cf})})));
+ M().innerHTML=`<p>Week of ${weekDates()[0]}: ${rows.length} shifts need attention.</p><table><tr><th>Date</th><th>Home</th><th>Shift</th><th>Kids</th><th>Staff</th><th>Issue</th><th></th></tr>${rows.map(({sh,cf})=>`<tr><td>${sh.date}</td><td>${esc(sh.h.name)}</td><td>${esc(sh.t.name)}</td><td>${sh.kids}</td><td>${sh.staff.length}/${sh.req}</td><td>${sh.staff.length<sh.req?'Short '+(sh.req-sh.staff.length):''} ${cf.length?'Conflict: '+esc(cf.map(i=>staffBy(i).name).join(', ')):''}</td><td><button class="btn" data-open="${sh.key}">Fix</button></td></tr>`).join('')}</table>`}
+// ---- events
+document.addEventListener('click',e=>{const t=e.target;const d=t.dataset||{};
+ if(d.tab){tab=d.tab;render()}else if(d.wk){weekStart=addDays(weekStart,7*d.wk);render()}else if(t.id==='autoBtn')autofill();else if(t.id==='seedBtn'){seedWeek();render()}
+ else if(d.adddef){S.defaults.push({id:uid(),staffId:d.adddef,homeId:S.homes[0].id,tpl:'Evening',weekday:0});save();render()}else if(d.deldef){S.defaults=S.defaults.filter(x=>x.id!==d.deldef);save();render()}
+ else if(t.id==='resetBtn'){if(confirm('Reset all data to the sample set?')){S=sample();save();render()}}
+ else if(d.open){picker(d.open)}else if(t.closest&&t.closest('.shift')&&!t.classList.contains('chip')&&!t.closest('.modal'))picker(t.closest('.shift').dataset.key);
+ else if(d.deloff){S.daysOff=S.daysOff.filter(o=>o.id!==d.deloff);save();render()}else if(d.delkid){S.kidEvents=S.kidEvents.filter(o=>o.id!==d.delkid);save();render()}
+ else if(d.delhol){e.preventDefault();S.holidays=S.holidays.filter(x=>x!==d.delhol);save();render()}
+ else if(t.id==='holAdd'){const v=document.getElementById('holIn').value;if(v&&!S.holidays.includes(v)){S.holidays.push(v);save();render()}}
+ else if(t.id==='addStaff'){S.staff.push({id:uid(),name:'New staff',elig:'both',usual:[S.homes[0].id],emp:'FT',target:36,active:true});save();render()}
+ else if(t.id==='oAdd'){const all=document.getElementById('oAll').checked;let a=document.getElementById('oA').value,b=document.getElementById('oB').value;if(!a){alert('Pick a start');return}if(all){a=a.slice(0,10)+'T00:00';b=ds(addDays(new Date((b||a).slice(0,10)+'T12:00'),1))+'T00:00'}if(!b||b<=a){alert('End must be after start');return}S.daysOff.push({id:uid(),staffId:document.getElementById('oS').value,allDay:all,start:a,end:b,reason:document.getElementById('oR').value||'Day off'});save();render()}
+ else if(t.id==='kAdd'){const a=document.getElementById('kA').value,b=document.getElementById('kB').value;if(!a||!b||b<=a){alert('Pick a valid start and end');return}S.kidEvents.push({id:uid(),homeId:document.getElementById('kH').value,type:document.getElementById('kT').value,start:a,end:b,delta:Number(document.getElementById('kD').value)||0,notes:document.getElementById('kN').value});save();render()}
+});
+document.addEventListener('change',e=>{const t=e.target,d=t.dataset;if(t.id==='viewAs'){S.viewAs=t.value;save();render();return}
+ if(d.admsched){const a=S.admins.find(x=>x.id===d.admsched);if(t.checked){a.schedulable=true;if(!a.staffId||!staffBy(a.staffId)){const id='sa'+uid();S.staff.push({id,name:a.name.split(' (')[0]+' (admin)',adminId:a.id,hasDefault:false,elig:'both',usual:a.homes.slice(0,2).length?a.homes.slice(0,2):[S.homes[0].id],emp:'FT',target:36,active:true,phone:''});a.staffId=id}}else{const now=new Date(),fut=[];for(const k in S.assign){const sh=shiftByKey(k);if(sh&&sh.e>now&&sh.staff.includes(a.staffId))fut.push(sh)}if(fut.length&&!confirm('This admin has '+fut.length+' upcoming shift(s):\n- '+fut.slice(0,10).map(x=>x.h.name+' '+x.t.name+' '+x.date).join('\n- ')+'\n\nTurn off anyway? These shifts will be unassigned and show as coverage gaps.')){t.checked=true;return}fut.forEach(x=>unassign(x.key,a.staffId));a.schedulable=false}save();render();return}
+ if(d.adm){const a=S.admins.find(x=>x.id===d.adm);if(d.f==='home'){a.homes=t.checked?[...a.homes,t.value]:a.homes.filter(x=>x!==t.value)}else a[d.f]=t.value;save();render();return}const v=t.type==='number'?Number(t.value):t.value;
+ if(d.h){home(d.h)[d.f]=v}else if(d.t){tplBy(d.t)[d.f]=v}else if(d.s){staffBy(d.s)[d.f]=v}else if(d.sact){staffBy(d.sact).active=t.checked}else if(d.hasdef){staffBy(d.hasdef).hasDefault=t.checked;save();render();return}else if(d.def){const x=S.defaults.find(q=>q.id===d.def);x[d.f]=d.f==='weekday'?Number(t.value):t.value}
+ else if(d.uh){const s=staffBy(d.uh);if(t.checked){if(s.usual.length>=2){alert('Max 2 usual homes');t.checked=false;return}s.usual.push(t.value)}else s.usual=s.usual.filter(x=>x!==t.value)}else return;save()});
+// drag and drop
+let drag=null;const hint=document.getElementById('hint');
+document.addEventListener('dragstart',e=>{const c=e.target.closest&&e.target.closest('.chip[data-sid]');if(!c)return;drag={sid:c.dataset.sid,from:c.dataset.from||null};e.dataTransfer.setData('text/plain',drag.sid)});
+document.addEventListener('dragover',e=>{if(!drag)return;const cell=e.target.closest&&e.target.closest('.shift');const side=e.target.closest&&e.target.closest('#sidebar');
+ document.querySelectorAll('.shift.over,.shift.bad,.shift.warn').forEach(x=>x.classList.remove('over','bad','warn'));
+ if(side&&drag.from){e.preventDefault();hint.style.display='block';hint.textContent='Drop to unassign '+staffBy(drag.sid).name;return}
+ if(!cell){hint.style.display='none';return}e.preventDefault();const sh=shiftByKey(cell.dataset.key);const i=issues(drag.sid,sh,drag.from);
+ cell.classList.add(i.block.length?'bad':i.warn.length?'warn':'over');hint.style.display='block';hint.textContent=i.block.length?'⛔ '+i.block.join('; '):i.warn.length?'⚠ '+i.warn.join('; ')+' (you can override)':'✓ OK: '+staffBy(drag.sid).name+' → '+sh.h.name+' '+sh.t.name});
+document.addEventListener('drop',e=>{if(!drag)return;e.preventDefault();const cell=e.target.closest&&e.target.closest('.shift');const side=e.target.closest&&e.target.closest('#sidebar');const d=drag;drag=null;hint.style.display='none';
+ if(side&&d.from){if(isSoft(d.from,d.sid)&&!confirm('Remove this default (soft-locked) shift?'))return;unassign(d.from,d.sid);render()}else if(cell)tryDrop(cell.dataset.key,d.sid,d.from);else render()});
+document.addEventListener('dragend',()=>{drag=null;hint.style.display='none';document.querySelectorAll('.shift.over,.shift.bad,.shift.warn').forEach(x=>x.classList.remove('over','bad','warn'))});
+
+// tap-to-assign (touch + mouse): tap a shift -> picker sheet
+const sheet=document.getElementById('sheet'),sheetIn=document.getElementById('sheetIn');
+const closeSheet=()=>{sheet.style.display='none'};
+sheet.addEventListener('click',e=>{if(e.target===sheet)closeSheet()});
+function openPicker(key){const sh=shiftByKey(key);if(!sh)return;
+ const cand=S.staff.filter(s=>s.active&&vis(s)&&!sh.staff.includes(s.id));
+ const usual=cand.filter(s=>s.usual.includes(sh.h.id)),cover=cand.filter(s=>!s.usual.includes(sh.h.id));
+ const row=s=>{const i=issues(s.id,sh,null);const cls=i.block.length?'b':i.warn.length?'w':'';
+  return `<button class="opt ${cls}" data-pick="${s.id}"><b>${esc(s.name)}</b> <span class="muted">${weekHours(s.id)}h this week</span><br><span class="muted">${i.block.length?'⛔ '+esc(i.block.join('; ')):i.warn.length?'⚠ '+esc(i.warn.join('; '))+' (can override)':'✓ OK'}</span></button>`};
+ sheetIn.innerHTML=`<div class="row" style="justify-content:space-between"><b>${esc(sh.h.name)} · ${esc(sh.t.name)} ${sh.date}</b><button class="btn" data-close="1">Close</button></div>
+ <div class="muted">${sh.kids} kids · ${sh.staff.length}/${sh.req} staff</div>
+ ${sh.staff.length?'<h3>Assigned</h3>'+sh.staff.map(id=>`<button class="opt" data-rm="${id}">${isSoft(key,id)?'📌 ':''}${esc(staffBy(id).name)} <span class="muted">— tap to remove</span></button>`).join(''):''}
+ <h3>Usual-home staff</h3>${usual.map(row).join('')||'<p class="muted">None available</p>'}<h3>Cover staff</h3>${cover.map(row).join('')||'<p class="muted">None</p>'}`;
+ sheetIn.dataset.key=key;sheet.style.display='flex'}
+sheetIn.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const key=sheetIn.dataset.key;
+ if(b.dataset.close){closeSheet();return}
+ if(b.dataset.rm){if(isSoft(key,b.dataset.rm)&&!confirm('Remove this default (soft-locked) shift?'))return;unassign(key,b.dataset.rm);save();render();openPicker(key);return}
+ if(b.dataset.pick){const sh=shiftByKey(key);const i=issues(b.dataset.pick,sh,null);if(i.block.length){alert('⛔ Not allowed: '+i.block.join('; '));return}closeSheet();tryDrop(key,b.dataset.pick,null)}});
+document.addEventListener('click',e=>{const c=e.target.closest&&e.target.closest('.shift[data-key]');if(!c||e.target.closest('#sheet,button,input,select,.modal'))return;openPicker(c.dataset.key)});
+load();weekStart=monday(new Date());render();
+// test hook
+window.__ghs={openPicker,vis,staffBy,setAdmin:id=>{S.viewAs=id;render()},seedWeek,isSoft,S:()=>S,autofill,shiftsFor,issues,render,setTab:t=>{tab=t;render()}};
+</script></body></html>
